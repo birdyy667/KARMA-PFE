@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>PFE - EV Multi-Planner</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f4f6f8; }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+
+        /* --- MODERN SIDEBAR --- */
+        .sidebar {
+            position: absolute; top: 15px; left: 15px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            padding: 18px; border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1); width: 300px;
+            border: 1px solid rgba(255,255,255,0.6);
+            color: #1e293b;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .sidebar h3 { margin-top: 0; margin-bottom: 15px; font-size: 1.2em; display: flex; align-items: center; gap: 8px; font-weight: 700; }
+        .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        input { width: 100%; box-sizing: border-box; padding: 11px 14px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9em; transition: all 0.2s ease; }
+        input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); }
+
+        .btn-gps { width: 42px; flex-shrink: 0; background: #eff6ff; color: #3b82f6; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .btn-main { width: 100%; margin-top: 5px; padding: 12px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 0.9em; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+
+        .btn-refresh { width: 100%; margin-top: 10px; padding: 10px; background: #475569; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 0.85em; cursor: pointer; display: none; }
+
+        .route-info { margin-top: 12px; padding: 12px; border-radius: 10px; background: white; border: 1px solid #f1f5f9; display: none; }
+        .route-info h4 { margin: 0 0 5px 0; font-size: 0.85em; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+        .fastest { border-left: 4px solid #10b981; color: #10b981; }
+        .eco { border-left: 4px solid #f59e0b; color: #f59e0b; margin-top: 8px; }
+        .shortest { border-left: 4px solid #3b82f6; color: #3b82f6; margin-top: 8px; }
+
+        /* RESERVATION POPUP STYLE */
+        .res-container { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9; }
+        .res-container select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9em; margin-bottom: 5px; }
+        .res-row { display: flex; gap: 5px; }
+        .btn-reserve { background: #f59e0b; color: white; border: none; border-radius: 8px; padding: 0 12px; cursor: pointer; }
+
+        /* --- MANUAL NEGOTIATION PANEL --- */
+        .nego-panel { margin-top: 15px; padding: 15px; border-radius: 10px; border: 2px solid #a855f7; background: #faf5ff; display: none; }
+        .nego-timer { font-size: 1.2em; font-weight: 700; color: #ef4444; text-align: center; margin: 10px 0; }
+        .btn-nego-submit { background: #a855f7; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-weight: 600; cursor: pointer; margin-top: 5px; }
+        .btn-nego-submit:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+        /* AI AUTO NEGOTIATION PANEL */
+        .nego-auto-panel { margin-top: 15px; padding: 15px; border-radius: 10px; border: 2px solid #3b82f6; background: #eff6ff; display: none; }
+        .btn-auto-submit { background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-weight: 600; cursor: pointer; margin-top: 5px; }
+
+        /* GPS ANIMATIONS */
+        @keyframes pulseGlowGreen { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); } 70% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        @keyframes pulseGlowRed { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        .gps-pin-wrapper { display: flex; flex-direction: column; align-items: center; }
+        .gps-marker-start { background-color: #10b981; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; color: white; border: 3px solid white; animation: pulseGlowGreen 2s infinite; }
+        .pin-tail-green { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid white; margin-top: -2px; }
+        .gps-marker-end { background-color: #ef4444; border-radius: 50%; width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; color: white; border: 3px solid white; animation: pulseGlowRed 2s infinite; }
+        .pin-tail-red { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid white; margin-top: -2px; }
+    </style>
+</head>
+<body>
+
+    <div style="position: absolute; top: 15px; right: 15px; z-index: 1000;">
+        <button style="background: white; border: none; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; color: #1e293b; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" onmouseover="this.nextElementSibling.style.display='flex'" onmouseout="setTimeout(() => { if(!this.nextElementSibling.matches(':hover')) this.nextElementSibling.style.display='none' }, 100)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>
+        </button>
+        <div style="display: none; position: absolute; right: 0; top: 50px; background: white; min-width: 200px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; flex-direction: column;" onmouseleave="this.style.display='none'" onmouseover="this.style.display='flex'">
+            <a href="/profil" style="color: #1e293b; padding: 12px 16px; text-decoration: none; font-weight: 600; font-size: 0.9em; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 10px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> My Profile
+            </a>
+            <a href="/reservations" style="color: #1e293b; padding: 12px 16px; text-decoration: none; font-weight: 600; font-size: 0.9em; display: flex; align-items: center; gap: 10px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg> My Reservations
+            </a>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <h3>EV Planner Pro</h3>
+        <div class="input-group">
+            <input type="text" id="start-location" placeholder="Start location..." oninput="startCoordsGPS = null;">
+            <button class="btn-gps" onclick="geolocate()">📍</button>
+        </div>
+        <input type="text" id="end-location" placeholder="Destination or station..." style="margin-bottom: 10px;" oninput="endCoordsStation = null;">
+
+        <div class="input-group" style="margin-bottom: 15px;">
+            <span style="display: flex; align-items: center; font-size: 1.2em; padding-right: 5px;" title="Departure Time (Impacts traffic)">🕒</span>
+            <input type="time" id="departure-hour" value="08:30" style="font-weight: bold; color: #3b82f6;">
+        </div>
+
+        <div class="input-group" style="flex-direction: column; margin-bottom: 15px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <label style="font-size: 0.85em; font-weight: 700; display: flex; justify-content: space-between; color: #475569; margin-bottom: 5px;">
+                <span>🔋 Starting battery</span>
+                <span id="batt-val" style="color: #10b981; font-weight: 800;">100%</span>
+            </label>
+            <input type="range" id="current-battery" min="5" max="100" value="100"
+                   style="width: 100%; margin: 0; padding: 0; cursor: pointer; accent-color: #10b981;"
+                   oninput="
+                       let val = this.value;
+                       let label = document.getElementById('batt-val');
+                       let color = val > 50 ? '#10b981' : (val > 20 ? '#f59e0b' : '#ef4444');
+                       label.innerText = val + '%';
+                       label.style.color = color;
+                       this.style.accentColor = color;
+                   ">
+        </div>
+        <button id="btn-calculate" class="btn-main" onclick="calculateRoute()">Compare Routes</button>
+
+        <button id="btn-refresh" class="btn-refresh" onclick="resetStations()">🔄 Show all stations</button>
+
+        <div id="nego-panel" class="nego-panel">
+            <h4 style="color: #a855f7; text-align: center; margin: 0 0 10px 0; font-size: 1.1em;"> Negotiation</h4>
+            <p style="margin: 5px 0; font-size: 0.85em;">📍 <span id="nego-station-nom" style="font-weight:600;"></span></p>
+            <p style="margin: 5px 0; font-size: 0.85em;">Starting Price: <b id="nego-prix-base" style="color:#ef4444;"></b> €/kWh</p>
+
+            <div class="nego-timer" id="nego-timer">60s</div>
+
+            <input type="number" id="nego-offer" step="0.01" placeholder="Your offer (e.g., 0.20)">
+            <button id="btn-send-offer" class="btn-nego-submit" onclick="sendOffer()">Propose this price</button>
+
+            <button id="btn-accept-counter" class="btn-nego-submit" style="background: #10b981; display: none; margin-top: 8px;" onclick="acceptCounterOffer()">✅ Accept counter-offer</button>
+
+            <p id="nego-message" style="margin-top: 10px; font-weight: 600; text-align: center; font-size: 0.85em;"></p>
+        </div>
+
+        <div id="nego-auto-panel" class="nego-auto-panel">
+            <h4 style="color: #3b82f6; text-align: center; margin: 0 0 5px 0; font-size: 1.1em;">AI Delegation</h4>
+            <p style="margin: 0 0 10px 0; font-size: 0.85em; text-align:center; color: #475569;">Set your budget, your Agent negotiates with stations (50km radius).</p>
+
+            <input type="number" id="nego-auto-price" step="0.01" placeholder="Max budget (e.g., 0.20)">
+            <button id="btn-launch-auto" class="btn-auto-submit" onclick="launchAutoNegotiation()">Launch Agent</button>
+
+            <p id="nego-auto-message" style="margin-top: 10px; font-weight: 600; text-align: center; font-size: 0.85em;"></p>
+        </div>
+
+        <div id="info-f" class="route-info fastest"><h4>⚡ Fastest</h4><span id="stat-f"></span></div>
+        <div id="info-e" class="route-info eco"><h4>🍃 Eco</h4><span id="stat-e"></span></div>
+        <div id="info-s" class="route-info shortest"><h4>📏 Shortest</h4><span id="stat-s"></span></div>
+
+        <div style="margin-top: 15px; padding: 5px; text-align: center;">
+            <button id="btn-stats" style="width: 100%; padding: 12px; background: #34495e; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#2c3e50'" onmouseout="this.style.background='#34495e'">
+                📊 ANALYTICS DASHBOARD
+            </button>
+        </div>
+    </div>
+
+    <div id="stats-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 30px; border-radius: 16px; width: 85%; max-width: 1100px; max-height: 85vh; overflow-y: auto; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.8);">
+
+            <button id="close-modal" style="position: absolute; top: 15px; right: 15px; background: #f1f5f9; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 1.2em; cursor: pointer; color: #64748b; display: flex; align-items: center; justify-content: center; font-weight: bold;">&times;</button>
+
+            <h2 style="margin-top: 0; margin-bottom: 20px; color: #1e293b; font-size: 1.5em; font-weight: 800; display: flex; align-items: center; gap: 10px;">📊 Analytics Dashboard</h2>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 25px; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; flex-wrap: wrap;">
+                <button id="btn-perf-nego" style="padding: 12px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); transition: all 0.2s;">
+                    ⚡ General Performance
+                </button>
+
+                <button id="btn-stats-temps" style="padding: 12px 20px; background: #475569; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer; transition: all 0.2s;">
+                    ⏳ Bounded Time Simulation
+                </button>
+
+                <button id="btn-stats-couts" style="padding: 12px 20px; background: #475569; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.9em; cursor: pointer; transition: all 0.2s;">
+                    💶 Cost Analysis
+                </button>
+            </div>
+
+            <div style="text-align: center; background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #e2e8f0; min-height: 300px; display: flex; justify-content: center; align-items: center; flex-direction: column;">
+                <div id="loading-stats" style="display: none; color: #2563eb; font-weight: 700; font-size: 1.1em; margin: 20px 0;">⏳ Generating charts...</div>
+                <img id="image-graphe-modal" src="" alt="Click on a button above to load charts" style="max-width: 100%; height: auto; display: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                <p id="placeholder-text" style="color: #64748b; font-weight: 600;">Select an analysis category above to display the charts.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map', { zoomControl: false}).setView([48.8566, 2.3522], 12);
+        L.control.zoom({position: 'bottomright'}).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
+
+        var layers = L.featureGroup().addTo(map);
+        var bornesLayer = L.layerGroup().addTo(map);
+        let startCoordsGPS = null, endCoordsStation = null, cachedStations = [];
+
+        // Negotiation Variables
+        let negoInterval = null, timeRemaining = 0, currentNegoStation = null;
+        let lastCounterOffer = 0;
+
+        async function sendOffer() {
+            let offerInput = document.getElementById('nego-offer').value;
+            if(!offerInput) return;
+
+            let offer = parseFloat(offerInput.replace(',', '.'));
+
+            if (offer > lastCounterOffer) {
+                document.getElementById('nego-message').innerText = `❌ Your offer cannot exceed €${lastCounterOffer}`;
+                document.getElementById('nego-message').style.color = "#ef4444";
+                return;
+            }
+
+            document.getElementById('nego-message').innerText = "🤔 Checking...";
+            document.getElementById('nego-message').style.color = "#f59e0b";
+
+            try {
+                const res = await fetch('/api/negociation/offer', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({station_id: currentNegoStation, offer: offer})
+                });
+                const data = await res.json();
+
+                if (data.status === "success") {
+                    document.getElementById('nego-message').innerText = data.message;
+
+                    if (data.accepted) {
+                        document.getElementById('nego-message').style.color = "#10b981";
+                        document.getElementById('nego-offer').disabled = true;
+                        document.getElementById('btn-send-offer').disabled = true;
+                        document.getElementById('btn-accept-counter').style.display = 'none';
+                        clearInterval(negoInterval);
+
+                        setTimeout(() => {
+                            document.getElementById('nego-panel').style.display = 'none';
+                            loadStations();
+                        }, 2000);
+
+                    } else if (data.session_status === "expired") {
+                        document.getElementById('nego-message').style.color = "#ef4444";
+                        document.getElementById('nego-offer').disabled = true;
+                        document.getElementById('btn-send-offer').disabled = true;
+                        document.getElementById('btn-accept-counter').style.display = 'none';
+                        clearInterval(negoInterval);
+                    } else {
+                        document.getElementById('nego-message').style.color = "#3b82f6";
+                        document.getElementById('nego-offer').value = data.new_price;
+
+                        lastCounterOffer = data.new_price;
+                        let btnAccept = document.getElementById('btn-accept-counter');
+                        btnAccept.style.display = 'block';
+                        btnAccept.innerText = `✅ Accept €${data.new_price}`;
+                    }
+                }
+            } catch (error) {
+                document.getElementById('nego-message').innerText = "Connection error.";
+                document.getElementById('nego-message').style.color = "#ef4444";
+            }
+        }
+
+        async function acceptCounterOffer() {
+            document.getElementById('nego-message').innerText = "Validating agreement...";
+            document.getElementById('nego-message').style.color = "#10b981";
+
+            try {
+                const res = await fetch('/api/negociation/accept', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({station_id: currentNegoStation, final_price: lastCounterOffer})
+                });
+                const data = await res.json();
+
+                if (data.status === "success") {
+                    document.getElementById('nego-message').innerText = `✅ Agreement concluded at €${lastCounterOffer}!`;
+                    document.getElementById('nego-offer').disabled = true;
+                    document.getElementById('btn-send-offer').disabled = true;
+                    document.getElementById('btn-accept-counter').style.display = 'none';
+                    clearInterval(negoInterval);
+
+                    setTimeout(() => {
+                        document.getElementById('nego-panel').style.display = 'none';
+                        loadStations();
+                    }, 2000);
+                }
+            } catch(error) {
+                document.getElementById('nego-message').innerText = "Network error. Python server not ready.";
+            }
+        }
+
+        function geolocate() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    startCoordsGPS = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                    document.getElementById('start-location').value = "📍 Current location";
+                    map.setView([startCoordsGPS.lat, startCoordsGPS.lon], 14);
+                });
+            }
+        }
+
+        function goToStation(id, lat, lon) {
+            endCoordsStation = { lat: lat, lon: lon };
+            document.getElementById('end-location').value = id;
+            map.closePopup();
+            bornesLayer.clearLayers();
+            document.getElementById('btn-refresh').style.display = 'block';
+            document.getElementById('nego-panel').style.display = 'none';
+            document.getElementById('nego-auto-panel').style.display = 'none';
+            calculateRoute();
+        }
+
+        function openNegotiation(idStation, currentPrice) {
+            map.closePopup();
+            document.getElementById('nego-auto-panel').style.display = 'none';
+            document.getElementById('nego-panel').style.display = 'block';
+            document.getElementById('nego-station-nom').innerText = idStation;
+            document.getElementById('nego-prix-base').innerText = currentPrice;
+            document.getElementById('nego-message').innerText = "Your turn to bid!";
+            document.getElementById('nego-message').style.color = "#1e293b";
+            document.getElementById('nego-offer').value = "";
+            document.getElementById('nego-offer').disabled = false;
+            document.getElementById('btn-send-offer').disabled = false;
+            document.getElementById('btn-accept-counter').style.display = 'none';
+
+            lastCounterOffer = currentPrice;
+            currentNegoStation = idStation;
+            timeRemaining = 60;
+            document.getElementById('nego-timer').innerText = ` ${timeRemaining}s`;
+
+            fetch('/api/negociation/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({station_id: idStation})
+            });
+
+            clearInterval(negoInterval);
+            negoInterval = setInterval(() => {
+                timeRemaining--;
+                document.getElementById('nego-timer').innerText = ` ${timeRemaining}s`;
+                if (timeRemaining <= 0) {
+                    clearInterval(negoInterval);
+                    document.getElementById('nego-timer').innerText = " 0s";
+                    document.getElementById('nego-message').innerText = "❌ Time's up! Negotiation cancelled.";
+                    document.getElementById('nego-message').style.color = "#ef4444";
+                    document.getElementById('nego-offer').disabled = true;
+                    document.getElementById('btn-send-offer').disabled = true;
+                    document.getElementById('btn-accept-counter').style.display = 'none';
+
+                    setTimeout(() => {
+                        document.getElementById('nego-panel').style.display = 'none';
+                    }, 2000);
+                }
+            }, 1000);
+        }
+
+        function openAutoNegotiation() {
+            map.closePopup();
+            document.getElementById('nego-panel').style.display = 'none';
+            document.getElementById('nego-auto-panel').style.display = 'block';
+            document.getElementById('nego-auto-message').innerText = "";
+            document.getElementById('nego-auto-price').value = "";
+        }
+
+        async function launchAutoNegotiation() {
+            let maxPriceInput = document.getElementById('nego-auto-price').value;
+            if(!maxPriceInput) return;
+
+            if(!startCoordsGPS) {
+                alert("Please click the 📍 (GPS) button top left to set your location first!");
+                return;
+            }
+
+            let maxPrice = parseFloat(maxPriceInput.replace(',', '.'));
+            let msgBox = document.getElementById('nego-auto-message');
+            msgBox.innerText = "🤖 Your agent is scanning stations...";
+            msgBox.style.color = "#f59e0b";
+            document.getElementById('btn-launch-auto').disabled = true;
+
+            try {
+                const res = await fetch('/api/negociation/auto', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        max_price: maxPrice,
+                        coords: startCoordsGPS
+                    })
+                });
+                const data = await res.json();
+
+                if (data.status === "success") {
+                    msgBox.innerText = data.message;
+                    msgBox.style.color = "#10b981";
+
+                    let winningStation = cachedStations.find(s => s.id === data.station_id);
+
+                    if(winningStation) {
+                        map.setView([winningStation.lat, winningStation.lon], 15);
+                        document.getElementById('end-location').value = winningStation.id;
+                        endCoordsStation = { lat: winningStation.lat, lon: winningStation.lon };
+                    }
+
+                    setTimeout(() => {
+                        document.getElementById('nego-auto-panel').style.display = 'none';
+                        loadStations();
+                        if (startCoordsGPS) {
+                            calculateRoute();
+                        }
+                    }, 3500);
+                } else {
+                    msgBox.innerText = data.message;
+                    msgBox.style.color = "#ef4444";
+                }
+            } catch (error) {
+                msgBox.innerText = "Network error.";
+                msgBox.style.color = "#ef4444";
+            } finally {
+                document.getElementById('btn-launch-auto').disabled = false;
+            }
+        }
+
+        function directReserve(id, time) {
+            fetch('/api/reserver', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({station_id: id, mode: 'precision', hour: time})
+            })
+            .then(r => r.json())
+            .then(d => {
+                alert(d.message);
+                if(d.status === "success") loadStations();
+            });
+        }
+
+        async function calculateRoute() {
+            let dep = document.getElementById('start-location').value, arr = document.getElementById('end-location').value;
+            let depHour = document.getElementById('departure-hour').value;
+
+            if (!dep || !arr) return;
+
+            let battStart = document.getElementById('current-battery').value;
+            let payload = { start_location: dep, end_location: arr, departure_hour: depHour, current_battery: battStart};
+
+            if (startCoordsGPS) payload.start_coords = startCoordsGPS;
+            if (endCoordsStation) payload.end_coords = endCoordsStation;
+
+            document.getElementById('btn-calculate').innerHTML = "⏳ Calculating...";
+
+            try {
+                const res = await fetch('/calculer', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                const data = await res.json();
+                if(data.status === "success") {
+                    layers.clearLayers();
+                    L.polyline(data.fastest.route, {color: '#10b981', weight: 6}).addTo(layers);
+                    L.polyline(data.eco.route, {color: '#f59e0b', weight: 5, dashArray: '7, 7'}).addTo(layers);
+                    L.polyline(data.shortest.route, {color: '#3b82f6', weight: 4, dashArray: '8, 8'}).addTo(layers);
+
+                    let iconS = L.divIcon({ className: 'c', html: `<div class="gps-pin-wrapper"><div class="gps-marker-start"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10l-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5l-1.4 2.9A3.7 3.7 0 0 0 2 12v4h2"></path><circle cx="7" cy="17" r="2"></circle><circle cx="17" cy="17" r="2"></circle></svg></div><div class="pin-tail-green"></div></div>`, iconSize: [34, 42], iconAnchor: [17, 40] });
+                    let iconE = L.divIcon({ className: 'c', html: `<div class="gps-pin-wrapper"><div class="gps-marker-end"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg></div><div class="pin-tail-red"></div></div>`, iconSize: [34, 42], iconAnchor: [17, 40] });
+
+                    L.marker(data.start_coords, {icon: iconS}).addTo(layers);
+                    L.marker(data.end_coords, {icon: iconE}).addTo(layers);
+                    map.fitBounds(layers.getBounds(), {padding: [40, 40]});
+
+                    ['f','e','s'].forEach(t => {
+                        document.getElementById('info-'+t).style.display = 'block';
+                        let d = data[t==='f'?'fastest':t==='e'?'eco':'shortest'];
+
+                        let batt_html = "";
+                        let action_html = "";
+
+                        if (d.out_of_battery) {
+                            batt_html = `<div style="background: #fef2f2; color: #ef4444; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 0.85em; border: 1px solid #fca5a5;">⚠️ Out of Battery!</div>`;
+                        } else {
+                            let color = d.arrival_battery > 20 ? '#10b981' : (d.arrival_battery > 10 ? '#f59e0b' : '#ef4444');
+                            let bg_color = d.arrival_battery > 20 ? '#ecfdf5' : (d.arrival_battery > 10 ? '#fffbeb' : '#fef2f2');
+                            let content_batt = `<div style="background: ${bg_color}; color: ${color}; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 0.85em; border: 1px solid ${color}50; margin-bottom: 4px; text-align: center;">🔋 ${d.arrival_battery}%</div>`;
+
+                            if (d.recharge_cost) {
+                                content_batt += `<div style="font-size: 1em; color: #64748b; font-weight: 700; text-align: center;"> €${d.recharge_cost} </div>`;
+                                action_html = `
+                                    <div style="display: flex; gap: 5px; margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                                        <button onclick="directReserve('${d.station_id}', '${d.station_time}')" style="flex: 1; padding: 6px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 0.8em; font-weight: 700; cursor: pointer; transition: 0.2s;">✅ Reserve ${d.station_time}</button>
+                                        <button onclick="openNegotiation('${d.station_id}', ${d.base_kwh_price})" style="flex: 1; padding: 6px; background: #a855f7; color: white; border: none; border-radius: 6px; font-size: 0.8em; font-weight: 700; cursor: pointer; transition: 0.2s;">💬 Negotiate</button>
+                                    </div>
+                                `;
+                            }
+                            batt_html = `<div style="display: flex; flex-direction: column; align-items: flex-end;">${content_batt}</div>`;
+                        }
+
+                        document.getElementById('stat-'+t).innerHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 6px;">
+                                <div style="font-size: 0.85em; color: #475569; line-height: 1.4;">
+                                    <b style="color: #1e293b; font-size: 1.1em;">${d.time_text}</b><br>
+                                    ${d.distance} km • ${d.energy} kWh
+                                </div>
+                                ${batt_html}
+                            </div>
+                            ${action_html}
+                        `;
+                    });
+                }
+            } finally { document.getElementById('btn-calculate').innerHTML = "Compare Routes"; }
+        }
+
+        function loadStations() {
+            fetch('/api/stations').then(r => r.json()).then(d => { if(d.status === "success") { cachedStations = d.stations; drawStations(); }});
+        }
+
+        function drawStations() {
+            bornesLayer.clearLayers();
+            cachedStations.forEach(s => {
+                let icon = L.divIcon({ className: 'c', html: "<div style='background:#1e293b; color:white; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:2px solid white; font-size: 12px;'>⚡</div>", iconSize: [24, 24], iconAnchor: [12, 12] });
+
+                let opts = '';
+                for(let h=8; h<=20; h++) {
+                    let hs = (h<10?'0'+h:h)+':00', reserved = (s.reserved_slots||[]).includes(hs);
+                    opts += `<option value="${hs}">${hs}${reserved?' ❌ (Occupied)':''}</option>`;
+                }
+
+                let pop = `
+                    <div style="text-align:center; min-width:180px; font-family: 'Segoe UI', sans-serif;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b;">📍 ${s.id}</h4>
+                        <div style="margin-bottom:8px; font-size:0.9em; color:#64748b;">Availability: <b>${s.battery}%</b></div>
+
+                        <div style="background-color: #f0fff4; padding: 8px; border-radius: 8px; border: 1px solid #2ecc71; margin-bottom:10px;">
+                            <span style="color: #27ae60; font-size: 0.75em; font-weight: bold; text-transform: uppercase;">Current Price</span><br>
+                            <b style="color: #2ecc71; font-size: 1.3em;">€${s.price}</b>
+                            <span style="font-size: 0.8em; color: #64748b;"> /kWh</span>
+                        </div>
+
+                        <button onclick="goToStation('${s.id}',${s.lat},${s.lon})" style="background:#10b981; color:white; border:none; border-radius:8px; padding:8px; width:100%; font-weight:600; cursor:pointer; margin-bottom:5px;"> Direct Route</button>
+                        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                            <button onclick="openNegotiation('${s.id}', ${s.price})" style="background:#a855f7; color:white; border:none; border-radius:8px; padding:8px; flex:1; font-size:0.85em; font-weight:600; cursor:pointer;" title="You negotiate manually">Manual</button>
+                            <button onclick="openAutoNegotiation()" style="background:#3b82f6; color:white; border:none; border-radius:8px; padding:8px; flex:1; font-size:0.85em; font-weight:600; cursor:pointer;" title="AI finds the best price"> AI Agent</button>
+                        </div>
+
+                        <div class="res-container">
+                            <select id="mode-${s.id}" style="padding:5px;"><option value="precision"> Specific Time</option><option value="morning">🌅 Morning</option><option value="afternoon">🌇 Afternoon</option></select>
+                            <div class="res-row">
+                                <select id="select-${s.id}">${opts}</select>
+                                <button class="btn-reserve" onclick="reserveSlot('${s.id}')">📅</button>
+                            </div>
+                        </div>
+                    </div>`;
+                L.marker([s.lat, s.lon], {icon: icon}).bindPopup(pop).addTo(bornesLayer);
+            });
+        }
+
+        function resetStations() {
+            drawStations();
+            document.getElementById('btn-refresh').style.display='none';
+            document.getElementById('nego-panel').style.display = 'none';
+            document.getElementById('nego-auto-panel').style.display = 'none';
+            layers.clearLayers();
+            document.getElementById('end-location').value = "";
+            endCoordsStation = null;
+            ['f','e','s'].forEach(t => document.getElementById('info-'+t).style.display='none');
+        }
+
+        function reserveSlot(id) {
+            let m = document.getElementById('mode-'+id).value, h = document.getElementById('select-'+id).value;
+            fetch('/api/reserver', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({station_id:id, mode:m, hour:h}) })
+            .then(r => r.json()).then(d => { alert(d.message); if(d.status==="success") { map.closePopup(); loadStations(); } });
+        }
+
+        /* --- 📊 INTERACTIVE POP-UP SYSTEM --- */
+
+        // 1. Open modal
+        document.getElementById('btn-stats').addEventListener('click', function() {
+            document.getElementById('stats-modal').style.display = 'flex';
+        });
+
+        // 2. Close modal
+        document.getElementById('close-modal').addEventListener('click', function() {
+            document.getElementById('stats-modal').style.display = 'none';
+        });
+
+        // --- 📊 DYNAMIC DASHBOARD MANAGER ---
+
+        // Listener for Button 1: General Performance
+        document.getElementById('btn-perf-nego').addEventListener('click', function() {
+            refreshChart('/api/generer_statistiques', this);
+        });
+
+        // Listener for Button 2: Bounded Time Simulation
+        document.getElementById('btn-stats-temps').addEventListener('click', function() {
+            refreshChart('/api/generer_stats_temps', this);
+        });
+
+        // Listener for Button 3: Cost Analysis
+        document.getElementById('btn-stats-couts').addEventListener('click', function() {
+            refreshChart('/api/generer_stats_couts', this);
+        });
+
+        /**
+         * Universal function to query Flask and update the large image
+         * @param {string} apiRoute - The Flask route to call
+         * @param {HTMLElement} activeButton - The clicked button
+         */
+        function refreshChart(apiRoute, activeButton) {
+            const img = document.getElementById('image-graphe-modal');
+            const loading = document.getElementById('loading-stats');
+            const placeholder = document.getElementById('placeholder-text');
+
+            // 1. Loading state
+            if (loading) loading.style.display = "block";
+            if (img) img.style.display = "none";
+            if (placeholder) placeholder.style.display = "none";
+
+            // 2. Fetch from Python backend
+            fetch(apiRoute)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        // 3. Inject image with timestamp (?t=...) to force browser bypass cache
+                        img.src = data.image_url + "?t=" + new Date().getTime();
+                        img.style.display = "block";
+                        if (loading) loading.style.display = "none";
+                    } else {
+                        alert("Error calculating statistics: " + data.message);
+                        if (loading) loading.style.display = "none";
+                    }
+                })
+                .catch(error => {
+                    console.error("Flask communication error:", error);
+                    alert("Cannot reach Python server. Make sure app.py is running.");
+                    if (loading) loading.style.display = "none";
+                });
+        }
+
+        loadStations();
+    </script>
+</body>
+</html>

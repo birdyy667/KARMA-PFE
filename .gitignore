@@ -1,0 +1,47 @@
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Virtual Environments
+# ==========================================
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================================
+# Python Cache & Testing
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+
+# ==========================================
+# Data & Application State (Do not commit!)
+# ==========================================
+data/
+*.pkl
+*.tif
+*.graphml
+*.json
+
+!data/raw/altitude_IDF.tif
+
+# Article (prive, partage a part)
+article/

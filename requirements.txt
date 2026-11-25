@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+osmnx
+networkx
+pandas
+matplotlib
+seaborn
+rasterio
+scikit-learn
